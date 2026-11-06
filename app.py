@@ -560,7 +560,6 @@ def cargar_historial_nube():
     tabla_cartas = "cartas_naupagas" if empresa_activa == "NAUPAGAS" else "cartas_econogas"
     cartas_nube = []
     
-    # Mapeo directo de series exactas por nombre de chofer / unidad grande para asegurar respaldo absoluto
     series_mapeo_fijo = {
         "ALFONSO GONZALEZ ORTIZ": "2FZACHCS46AV28597",
         "MARTIN GONZALEZ LEON": "3ALACYCS7ABAS4691",
@@ -881,9 +880,10 @@ def generar_hoja_traslado_pdf(d):
             "09": "septiembre", "10": "octubre", "11": "noviembre", "12": "diciembre"
         }
         
-        f_emision_str = d.get('fecha_registro', '')
+        # PRIORIZAR FECHA DE SALIDA DE LA CARTA PORTE
+        f_salida_str = d.get('fecha_salida', '') or d.get('fecha_registro', '')
         try:
-            fecha_parte = f_emision_str.split()[0]
+            fecha_parte = f_salida_str.split()[0]
             dia, mes, anio = fecha_parte.split('/')
             mes_nombre = meses_es.get(mes, "noviembre")
             fecha_formal = f"{int(dia)} de {mes_nombre} de {anio}"
@@ -1077,7 +1077,6 @@ if accion == "Nueva Carta Porte":
             def_poliza = datos_chofer_actual.get("poliza", "")
             def_ruta = datos_chofer_actual.get("ruta", "")
             
-            # Asignación robusta de la serie oficial según el chofer seleccionado
             serie_mapeo_fijo_local = {
                 "ALFONSO GONZALEZ ORTIZ": "2FZACHCS46AV28597",
                 "MARTIN GONZALEZ LEON": "3ALACYCS7ABAS4691",
