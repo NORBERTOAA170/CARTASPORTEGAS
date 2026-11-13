@@ -610,6 +610,17 @@ def cargar_catalogo_nube():
             response = supabase.table(tabla_cat).select("*").order("id", desc=False).execute()
             if response.data is not None and len(response.data) > 0:
                 return response.data
+            else:
+                for item in default_cat:
+                    item_limpio = {k: v for k, v in item.items() if k != "id"}
+                    try:
+                        supabase.table(tabla_cat).insert(item_limpio).execute()
+                    except Exception:
+                        item_sin_extras = {k: v for k, v in item_limpio.items() if k not in ["serie", "color"]}
+                        supabase.table(tabla_cat).insert(item_sin_extras).execute()
+                response_init = supabase.table(tabla_cat).select("*").order("id", desc=False).execute()
+                if response_init.data:
+                    return response_init.data
         except Exception:
             pass
     return default_cat
@@ -619,21 +630,44 @@ def guardar_chofer_nube(datos):
     if supabase is not None:
         try:
             supabase.table(tabla_cat).insert(datos).execute()
+            return True
         except Exception:
-            pass
-    return True
+            try:
+                datos_base = {k: v for k, v in datos.items() if k not in ["serie", "color"]}
+                supabase.table(tabla_cat).insert(datos_base).execute()
+                return True
+            except Exception as e2:
+                st.error(f"❌ Error al guardar en Supabase: {e2}")
+                return False
+    st.error("❌ No hay conexión activa con Supabase.")
+    return False
 
 def actualizar_chofer_nube(chofer_id, datos):
     tabla_cat = "catalogo_choferes_naupagas" if empresa_activa == "NAUPAGAS" else "catalogo_choferes_econogas"
     if supabase is not None:
         try:
-            if isinstance(chofer_id, int):
-                supabase.table(tabla_cat).update(datos).eq("id", chofer_id).execute()
+            if chofer_id is not None:
+                res = supabase.table(tabla_cat).update(datos).eq("id", chofer_id).execute()
             else:
-                supabase.table(tabla_cat).update(datos).eq("nombre", datos.get("nombre")).execute()
+                res = supabase.table(tabla_cat).update(datos).eq("nombre", datos.get("nombre")).execute()
+            
+            if res.data and len(res.data) > 0:
+                return True
         except Exception:
-            pass
-    return True
+            try:
+                datos_base = {k: v for k, v in datos.items() if k not in ["serie", "color"]}
+                if chofer_id is not None:
+                    res = supabase.table(tabla_cat).update(datos_base).eq("id", chofer_id).execute()
+                else:
+                    res = supabase.table(tabla_cat).update(datos_base).eq("nombre", datos.get("nombre")).execute()
+                
+                if res.data and len(res.data) > 0:
+                    return True
+            except Exception as e2:
+                st.error(f"❌ Error real al actualizar en Supabase: {e2}")
+                return False
+    st.error("❌ No se pudo confirmar la actualización en la base de datos.")
+    return False
 
 def eliminar_chofer_nube(chofer_id):
     tabla_cat = "catalogo_choferes_naupagas" if empresa_activa == "NAUPAGAS" else "catalogo_choferes_econogas"
@@ -643,9 +677,11 @@ def eliminar_chofer_nube(chofer_id):
                 supabase.table(tabla_cat).delete().eq("id", chofer_id).execute()
             else:
                 supabase.table(tabla_cat).delete().eq("nombre", chofer_id).execute()
-        except Exception:
-            pass
-    return True
+            return True
+        except Exception as e:
+            st.error(f"❌ Error al eliminar en Supabase: {e}")
+            return False
+    return False
 
 auth_key = f"auth_{empresa_activa.lower()}"
 if auth_key not in st.session_state:
@@ -880,7 +916,6 @@ def generar_hoja_traslado_pdf(d):
             "09": "septiembre", "10": "octubre", "11": "noviembre", "12": "diciembre"
         }
         
-        # PRIORIZAR FECHA DE SALIDA DE LA CARTA PORTE
         f_salida_str = d.get('fecha_salida', '') or d.get('fecha_registro', '')
         try:
             fecha_parte = f_salida_str.split()[0]
@@ -900,7 +935,6 @@ def generar_hoja_traslado_pdf(d):
         capacidad_unidad = d.get('capacidad', '13,900 LTS.')
         placas_unidad = d.get('placas', 'XX-2879-A')
         
-        # Diccionario maestro de respaldo por nombre de chofer para las 4 pipas grandes
         mapa_series_fijas = {
             "ALFONSO GONZALEZ ORTIZ": "2FZACHCS46AV28597",
             "MARTIN GONZALEZ LEON": "3ALACYCS7ABAS4691",
@@ -1661,6 +1695,10 @@ elif accion == "⚙️ Administrar Catálogo":
                 st.markdown("#### 🔐 Autorización de Seguridad")
                 pass_modificar = st.text_input("Contraseña Maestra para Guardar Cambios / Eliminar", type="password", key=f"pass_mod_{sel_edit}")
 
+                if st.session_state.get("mensaje_exito_catalogo"):
+                    st.success(st.session_state["mensaje_exito_catalogo"])
+                    del st.session_state["mensaje_exito_catalogo"]
+
                 col_btn_1, col_btn_2 = st.columns(2)
                 with col_btn_1:
                     if st.button("Actualizar Datos", key=f"btn_act_{sel_edit}", type="primary", use_container_width=True):
@@ -1687,7 +1725,9 @@ elif accion == "⚙️ Administrar Catálogo":
                                 "color": e_color.strip().upper()
                             }
                             if actualizar_chofer_nube(datos_sel.get("id"), datos_actualizados):
-                                st.success(f"¡Operador {e_nombre} actualizado con éxito!")
+                                st.session_state["mensaje_exito_catalogo"] = f"✅ ¡Los cambios para {e_nombre.strip().upper()} se han guardado con éxito en la nube!"
+                                st.toast("Cambios guardados correctamente", icon="✅")
+                                time_module.sleep(0.5)
                                 st.rerun()
                 with col_btn_2:
                     if st.button("Eliminar Operador", key=f"btn_del_{sel_edit}", type="secondary", use_container_width=True):
@@ -1695,5 +1735,5 @@ elif accion == "⚙️ Administrar Catálogo":
                             st.error("❌ Contraseña maestra incorrecta.")
                         else:
                             if eliminar_chofer_nube(datos_sel.get("id") if datos_sel.get("id") else datos_sel.get("nombre")):
-                                st.success(f"¡Operador {sel_edit} eliminado correctamente!")
+                                st.session_state["mensaje_exito_catalogo"] = f"🗑️ ¡Operador {sel_edit} eliminado correctamente!"
                                 st.rerun()
